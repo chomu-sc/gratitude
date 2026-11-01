@@ -40,6 +40,15 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; }
+html {
+  -webkit-text-size-adjust: 100%;   /* 가로로 돌려도 글자가 커지지 않게 */
+  text-size-adjust: 100%;
+  touch-action: pan-x pan-y;         /* 핀치·두 번 탭 확대 막기 (스크롤은 허용) */
+  overscroll-behavior: none;         /* 위아래 끝에서 화면 전체가 튕기지 않게 */
+}
+button, a, label, input, textarea, summary { touch-action: manipulation; }
+img, svg { -webkit-user-drag: none; }
+button, .tab, .tab-plus, summary { -webkit-user-select: none; user-select: none; }
 body {
   background: var(--bg);
   color: var(--text);
@@ -208,8 +217,9 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
 /* ---------- 작성 시트 ---------- */
 .sheet {
-  position: fixed; inset: 0; z-index: 20; background: var(--bg);
-  display: flex; flex-direction: column;
+  position: fixed; left: 0; right: 0; z-index: 20; background: var(--bg);
+  top: var(--vv-top, 0px); height: var(--vv-height, 100dvh);
+  display: flex; flex-direction: column; overscroll-behavior: contain;
   animation: sheet-in 0.28s cubic-bezier(.2, .8, .2, 1);
 }
 @keyframes sheet-in { from { transform: translateY(24px); opacity: 0; } }
@@ -237,7 +247,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
   -webkit-appearance: none; appearance: none;
 }
 
-.step { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px 18px 24px; animation: step-in 0.25s ease; }
+.step { flex: 1; min-height: 0; overscroll-behavior: contain; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 20px 18px 24px; animation: step-in 0.25s ease; }
 @keyframes step-in { from { transform: translateX(16px); opacity: 0; } }
 .step h2 { margin: 0 0 4px; font-size: 24px; letter-spacing: -0.02em; }
 .step .hint { margin: 0 0 18px; font-size: 13px; color: var(--text-2); }
@@ -263,6 +273,7 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
 /* 기분 */
 .mood-pick { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 18px 0 8px; }
+.mood-pick #mood-face { display: flex; justify-content: center; }
 .mood-pick .face { filter: drop-shadow(0 8px 18px var(--glow, rgba(0,0,0,.15))); transition: filter .2s; }
 .mood-pick .mood-label { font-size: 20px; font-weight: 700; }
 .range-wrap { margin: 10px 4px 0; }
@@ -298,7 +309,8 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .recap { margin-top: 18px; }
 .recap li { font-size: 14px; color: var(--text-2); }
 
-.done { flex: 1; display: grid; place-items: center; text-align: center; animation: step-in 0.25s ease; }
+.done { flex: 1; display: grid; place-items: center; text-align: center; padding: 24px; animation: step-in 0.25s ease; }
+.done .face { margin: 0 auto; }   /* 얼굴을 가운데로 (기본은 왼쪽 정렬) */
 .done h2 { margin: 14px 0 4px; font-size: 26px; }
 .done p { margin: 0; color: var(--text-2); }
 

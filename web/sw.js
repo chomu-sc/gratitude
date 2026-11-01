@@ -1,6 +1,6 @@
 // 오프라인에서도 앱 화면이 뜨도록 앱 파일을 캐시합니다.
 // 앱 파일을 고친 뒤 배포할 때는 VERSION 숫자를 올려 주세요. (새 버전으로 교체됨)
-const VERSION = 'gj-v2';
+const VERSION = 'gj-v4';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',

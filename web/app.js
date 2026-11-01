@@ -27,6 +27,7 @@ const EMOTIONS = {
 const UNSET_LABEL = '기분 미기록';
 
 /** 감정 얼굴 SVG. level 0 = 미기록(점선 얼굴) */
+let faceSeq = 0;
 function faceSVG(level, size = 40) {
   const ink = 'rgba(0,0,0,.72)';
   if (!level) {
@@ -36,15 +37,45 @@ function faceSVG(level, size = 40) {
       <path d="M30 68 L70 68" stroke="var(--unset)" stroke-width="6.5" stroke-linecap="round"/>
     </svg>`;
   }
-  const c = (level - 1) / 3 - 1;          // -1(찡그림) ~ 1(웃음)
-  const y = 67 - 10 * c;
-  const cy = y + 40 * c;
+  const c = (level - 4) / 3;               // -1(울상) ~ 0(무표정) ~ 1(웃음)
+  const gid = `shine-${++faceSeq}`;        // 얼굴마다 고유 id (같은 id가 여러 개면 일부 화면에서 효과가 사라짐)
+  // 입: 입꼬리는 살짝만 올리고/내리고, 곡선 깊이도 적당히 → 과장되지 않은 자연스러운 표정
+  const half = 18 + 3 * Math.abs(c);       // 입 너비의 절반
+  const yEnd = 67 - 6 * c;                 // 입꼬리 높이 (웃으면 올라가고 슬프면 내려감)
+  const ctrl = 67 + 14 * c;                // 곡선 조절점 (웃으면 아래로 휘고 슬프면 위로 휨)
+  const x1 = 50 - half, x2 = 50 + half;
+  const f = (n) => n.toFixed(1);
+
+  let mouth;
+  if (level === 7) {
+    // 활짝 웃음: 살짝 벌린 입
+    mouth = `<path d="M${f(x1)} ${f(yEnd)} Q50 ${f(yEnd + 3)} ${f(x2)} ${f(yEnd)} Q50 ${f(ctrl + 7)} ${f(x1)} ${f(yEnd)}Z"
+      fill="${ink}" stroke="${ink}" stroke-width="4" stroke-linejoin="round"/>`;
+  } else {
+    mouth = `<path d="M${f(x1)} ${f(yEnd)} Q50 ${f(ctrl)} ${f(x2)} ${f(yEnd)}" fill="none" stroke="${ink}" stroke-width="6" stroke-linecap="round"/>`;
+  }
+
+  // 눈: 기본은 동그란 눈, 아주 기분 좋으면 웃는 눈(︶ ︶)
+  const eyes = level === 7
+    ? `<path d="M28.5 43 Q34.75 34 41 43 M59 43 Q65.25 34 71.5 43" fill="none" stroke="${ink}" stroke-width="6" stroke-linecap="round"/>`
+    : `<g fill="${ink}"><rect x="30.5" y="33" width="8.5" height="14" rx="4.25"/><rect x="61" y="33" width="8.5" height="14" rx="4.25"/></g>`;
+
+  // 눈썹: 불쾌할수록 안쪽 끝이 올라간 '시무룩한' 눈썹
+  const brow = level <= 2
+    ? (() => { const t = level === 1 ? 6 : 3.5;
+        return `<path d="M26 ${f(26 + t / 2)} L40 ${f(26 - t / 2)} M60 ${f(26 - t / 2)} L74 ${f(26 + t / 2)}" stroke="${ink}" stroke-width="4.5" stroke-linecap="round" opacity=".85"/>`; })()
+    : '';
+
+  // 볼터치: 기분 좋을 때만 은은하게
+  const blush = level >= 6
+    ? `<g fill="#FF7A6B" opacity="${level === 7 ? 0.35 : 0.25}"><ellipse cx="25" cy="58" rx="7" ry="4.5"/><ellipse cx="75" cy="58" rx="7" ry="4.5"/></g>`
+    : '';
+
   return `<svg class="face" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true">
+    <defs><radialGradient id="${gid}" cx="35%" cy="25%" r="70%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
     <circle cx="50" cy="50" r="48" fill="${EMOTIONS[level].color}"/>
-    <circle cx="50" cy="50" r="48" fill="url(#shine)" opacity=".5"/>
-    <defs><radialGradient id="shine" cx="35%" cy="25%" r="70%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>
-    <g fill="${ink}"><rect x="30.5" y="32.5" width="8.5" height="15" rx="4.25"/><rect x="61" y="32.5" width="8.5" height="15" rx="4.25"/></g>
-    <path d="M28 ${y.toFixed(1)} Q50 ${cy.toFixed(1)} 72 ${y.toFixed(1)}" fill="none" stroke="${ink}" stroke-width="6.5" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="48" fill="url(#${gid})" opacity=".5"/>
+    ${blush}${brow}${eyes}${mouth}
   </svg>`;
 }
 
@@ -485,7 +516,7 @@ function menuHTML() {
       <section class="card list">
         <h3 class="menu-title">데이터</h3>
         <button class="row link" data-action="export"><span>기록 내보내기 (JSON 파일)</span><span>↓</span></button>
-        <div class="row"><span>버전</span><span>1.1</span></div>
+        <div class="row"><span>버전</span><span>1.3</span></div>
       </section>
 
       ${LOCAL_ONLY ? '' : '<button class="btn danger block logout" data-action="logout">로그아웃</button>'}
@@ -771,7 +802,17 @@ function saveFlow() {
 function autosaveFlow() {
   if (!flow || flow.step === 'done') return;
   commitCurrent();
-  if (snapshot() !== flow.saved && saveFlow()) toast('적은 내용을 저장했어요');
+  if (snapshot() === flow.saved) return;
+  if (saveFlow()) {
+    toast('적은 내용을 저장했어요');
+  } else if (flow.existing && !cleanItems().length) {
+    // 이미 있던 기록의 감사한 일을 모두 지웠다면 → 그 날 기록 삭제
+    store.remove(flow.day);
+    flow.existing = false;
+    flow.saved = EMPTY_SNAPSHOT;
+    saved();
+    toast('이 날의 기록을 지웠어요');
+  }
 }
 
 function closeFlow({ autosave = true } = {}) {
@@ -923,6 +964,11 @@ function changeFlowDay(day) {
 }
 
 function bindFlowEvents(sheet) {
+  // [더 적기]·[그만 적기]·✕ 를 누를 때 입력칸 포커스가 빠지면 iPhone 키보드가 내려갔다 올라옴 → 막기
+  sheet.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('[data-flow="more"], [data-flow="del"]')) e.preventDefault();
+  });
+
   sheet.addEventListener('click', (e) => {
     const target = e.target.closest('[data-flow]');
     if (!target || !flow) return;
@@ -994,6 +1040,34 @@ function bindFlowEvents(sheet) {
     }
   });
 }
+
+/* =========================================================
+   iPhone 화면 다듬기
+   ========================================================= */
+// 핀치 확대 막기 (Safari의 gesture 이벤트) + 두 번 탭 확대 막기
+['gesturestart', 'gesturechange', 'gestureend'].forEach((type) =>
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false }));
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && !e.target.closest('input, textarea')) e.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+
+// 키보드가 올라오면 보이는 영역(visualViewport)에 맞춰 작성 시트 높이를 줄임
+// → 아래 [더 적기]/[그만 적기] 버튼이 키보드에 가려지지 않음
+function fitToViewport() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement.style;
+  root.setProperty('--vv-height', `${vv.height}px`);
+  root.setProperty('--vv-top', `${vv.offsetTop}px`);
+  // 키보드가 닫힌 뒤 iPhone이 화면을 밀어 올린 채로 두는 문제 되돌리기
+  if (flow && vv.height >= window.innerHeight - 1 && window.scrollY !== 0) window.scrollTo(0, 0);
+}
+window.visualViewport?.addEventListener('resize', fitToViewport);
+window.visualViewport?.addEventListener('scroll', fitToViewport);
+fitToViewport();
 
 /* =========================================================
    시작

@@ -6,7 +6,7 @@ import OSLog
 /// Supabase ▸ Project Settings ▸ API 에서 복사해 넣으세요. (웹앱 config.js와 같은 값)
 /// 비워 두면 이 기기에만 저장합니다.
 enum SupabaseConfig {
-    static let url = "https://lyxndiiuaugtbafvzqff.supabase.co/rest/v1/"        // 예: "https://abcdefghijk.supabase.co"
+    static let url = "https://lyxndiiuaugtbafvzqff.supabase.co"        // 예: "https://abcdefghijk.supabase.co"
     static let anonKey = "sb_publishable_Wr-O9B8Fnyz4QwCgKXj8uw_eEMTB4do"    // anon public 키 (공개돼도 되는 키 — 데이터는 로그인한 본인만 접근 가능)
 
     static var isConfigured: Bool {
