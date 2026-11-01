@@ -377,3 +377,28 @@ details[open] > summary .chev { transform: rotate(90deg); }
 .row-details ol { margin: 0 0 12px; padding-left: 20px; font-size: 14px; color: var(--text-2); display: grid; gap: 6px; animation: step-in 0.2s ease; }
 .row-details b { color: var(--text); }
 .logout { margin-top: 4px; }
+
+/* 키보드가 올라와 있을 때: 아래 '홈 막대' 여백 없애서 키보드와 버튼 사이 빈 공간 제거 */
+.kb-open .bar-bottom { padding-bottom: 10px; }
+
+/* ---------- 매일 알림 ---------- */
+label.row { cursor: pointer; }
+.row.muted { opacity: 0.45; }
+.switch { position: relative; width: 51px; height: 31px; flex: none; }
+.switch input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+.switch i {
+  position: absolute; inset: 0; border-radius: 99px; background: var(--fill-strong);
+  transition: background 0.2s ease;
+}
+.switch i::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%;
+  background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.2); transition: transform 0.2s ease;
+}
+.switch input:checked + i { background: #34C759; }
+.switch input:checked + i::after { transform: translateX(20px); }
+.switch input:disabled + i { opacity: 0.5; }
+.time-input {
+  font-size: 16px; border: 0; background: var(--fill-strong); color: var(--text);
+  border-radius: 10px; padding: 6px 10px; min-width: 110px; text-align: center;
+  -webkit-appearance: none; appearance: none;
+}

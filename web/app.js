@@ -357,10 +357,23 @@ function enterSession(session) {
 }
 
 /* ---------- 홈 ---------- */
+// 알림을 눌러 열었으면(?write=today) 바로 오늘 쓰기 화면
+let pendingWrite = new URLSearchParams(location.search).has('write');
 function renderHomeShell() {
   ui.view = 'home';
   renderHome();
+  if (pendingWrite) {
+    pendingWrite = false;
+    history.replaceState(null, '', location.pathname);
+    if (!flow) openFlow(todayKey());
+  }
 }
+// 앱이 이미 열려 있을 때 알림을 누른 경우
+navigator.serviceWorker?.addEventListener('message', (e) => {
+  if (e.data?.type !== 'write-today') return;
+  if (ui.view === 'home') { if (!flow) openFlow(todayKey()); }
+  else pendingWrite = true;
+});
 
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const isStandalone = () => window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
@@ -441,6 +454,129 @@ function renderStatus() {
   document.querySelectorAll('.js-status-text').forEach((el) => { el.textContent = statusText(); });
 }
 
+/* ---------- 매일 알림 (웹 푸시) ---------- */
+const FN_URL = `${(SUPABASE_URL || '').replace(/\/+$/, '')}/functions/v1/reminders`;
+const remind = (() => {
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('gj:remind') || '{}'); } catch { return {}; } })();
+  return { on: !!saved.on, time: saved.time || '21:00', busy: false };
+})();
+const saveRemind = () => localStorage.setItem('gj:remind', JSON.stringify({ on: remind.on, time: remind.time }));
+
+/** 'ok' | 'login' | 'install' (iPhone에서 홈 화면 앱이 아님) | 'unsupported' */
+function pushSupport() {
+  if (LOCAL_ONLY || !sync.session) return 'login';
+  if (isIOS && !isStandalone()) return 'install';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'unsupported';
+  return 'ok';
+}
+
+function base64ToBytes(b64) {
+  const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+}
+
+async function saveSubscription(sub) {
+  const j = sub.toJSON();
+  const { error } = await supabase.from('push_subscriptions').upsert({
+    endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth,
+    user_id: sync.session.user.id,
+    remind_time: remind.time,
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul',
+    enabled: true, updated_at: new Date().toISOString(),
+  }, { onConflict: 'endpoint' });
+  if (error) throw error;
+}
+
+async function enableReminder() {
+  // 권한 요청은 버튼을 누른 바로 그 순간에 해야 iPhone이 물어봄
+  const permission = await Notification.requestPermission();
+  if (permission !== 'granted') {
+    throw new Error('알림이 허용되지 않았어요. iPhone 설정 ▸ 알림 ▸ 감사일기에서 켜 주세요.');
+  }
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    const res = await fetch(`${FN_URL}?action=vapid`);
+    const { publicKey } = await res.json();
+    if (!publicKey) throw new Error('알림 서버에 연결하지 못했어요.');
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(publicKey) });
+  }
+  await saveSubscription(sub);
+}
+
+async function disableReminder() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+  await sub.unsubscribe().catch(() => {});
+}
+
+async function updateReminderTime() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (sub) await saveSubscription(sub);
+}
+
+async function sendTestPush() {
+  const { data } = await supabase.auth.getSession();
+  const res = await fetch(FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${data.session?.access_token}` },
+    body: JSON.stringify({ action: 'test' }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || '테스트 알림을 보내지 못했어요.');
+}
+
+async function onReminderChange(work, okMessage) {
+  if (remind.busy) return;
+  remind.busy = true;
+  renderHome();
+  try {
+    await work();
+    if (okMessage) toast(okMessage);
+  } catch (err) {
+    console.error(err);
+    alert(err.message || '알림 설정 중 문제가 생겼어요.');
+  } finally {
+    remind.busy = false;
+    saveRemind();
+    if (ui.tab === 'menu') renderHome();
+  }
+}
+
+function reminderHTML() {
+  const support = pushSupport();
+  const notes = {
+    login: '로그인하면 알림을 켤 수 있어요.',
+    install: 'iPhone에서는 <b>홈 화면에 추가</b>한 감사일기 앱에서만 알림을 받을 수 있어요. 홈 화면 아이콘으로 열어서 켜 주세요.',
+    unsupported: '이 브라우저는 알림을 지원하지 않아요. (iPhone은 iOS 16.4 이상, 홈 화면 앱에서 가능)',
+  };
+  if (support !== 'ok') {
+    return `
+      <section class="card list">
+        <h3 class="menu-title">매일 알림</h3>
+        <p class="row-note" style="padding-top:12px;border-top:1px solid var(--line)">${notes[support]}</p>
+      </section>`;
+  }
+  const off = remind.busy ? 'disabled' : '';
+  return `
+    <section class="card list">
+      <h3 class="menu-title">매일 알림</h3>
+      <label class="row">
+        <span>알림 받기</span>
+        <span class="switch"><input type="checkbox" id="remind-on" ${remind.on ? 'checked' : ''} ${off}><i></i></span>
+      </label>
+      <label class="row ${remind.on ? '' : 'muted'}">
+        <span>알림 시간</span>
+        <input type="time" id="remind-time" class="time-input" value="${remind.time}" ${off}>
+      </label>
+      ${remind.on ? `<button class="row link" data-action="test-push" ${off}><span>테스트 알림 보내기</span><span>🔔</span></button>` : ''}
+      <p class="row-note" style="padding-top:10px">정한 시간에 <b>“오늘 감사한 것은 뭐가 있었나요?”</b> 알림이 와요. 그날 이미 감사일기를 썼다면 알림은 오지 않아요.</p>
+    </section>`;
+}
+
 /* ---------- 메뉴 화면 ---------- */
 function stats() {
   const list = Object.values(store.entries).filter((e) => !e.deleted);
@@ -473,6 +609,8 @@ function menuHTML() {
           ${stat(`${s.items}개`, '감사한 일')}
         </div>
       </section>
+
+      ${reminderHTML()}
 
       <section class="card list">
         <h3 class="menu-title">계정 · 동기화</h3>
@@ -516,7 +654,7 @@ function menuHTML() {
       <section class="card list">
         <h3 class="menu-title">데이터</h3>
         <button class="row link" data-action="export"><span>기록 내보내기 (JSON 파일)</span><span>↓</span></button>
-        <div class="row"><span>버전</span><span>1.3</span></div>
+        <div class="row"><span>버전</span><span>1.4</span></div>
       </section>
 
       ${LOCAL_ONLY ? '' : '<button class="btn danger block logout" data-action="logout">로그아웃</button>'}
@@ -710,6 +848,7 @@ app.addEventListener('click', (e) => {
       runSync(pull).then(() => { if (ui.tab === 'menu') renderHome(); toast('동기화했어요'); });
       break;
     case 'export': exportEntries(); break;
+    case 'test-push': onReminderChange(sendTestPush, '테스트 알림을 보냈어요. 잠시 후 도착해요'); break;
     case 'logout':
       if (confirm('로그아웃할까요?\n이 기기에 남은 기록은 다음에 로그인하면 다시 보여요.')) {
         runSync(flush).finally(() => supabase.auth.signOut());
@@ -722,6 +861,25 @@ app.addEventListener('click', (e) => {
       break;
   }
 });
+
+app.addEventListener('change', (e) => {
+  if (e.target.id === 'remind-on') {
+    const turnOn = e.target.checked;
+    onReminderChange(async () => {
+      if (turnOn) { await enableReminder(); remind.on = true; }
+      else { await disableReminder(); remind.on = false; }
+    }, turnOn ? `매일 ${fmtClock(remind.time)}에 알려드릴게요` : '알림을 껐어요');
+  } else if (e.target.id === 'remind-time' && e.target.value) {
+    remind.time = e.target.value;
+    saveRemind();
+    if (remind.on) onReminderChange(updateReminderTime, `매일 ${fmtClock(remind.time)}에 알려드릴게요`);
+  }
+});
+
+function fmtClock(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h < 12 ? '오전' : '오후'} ${((h + 11) % 12) + 1}:${pad(m)}`;
+}
 
 /* =========================================================
    작성 흐름: ① 하나씩 적기 → ② 기분 + 한 줄 총평 → 저장
@@ -1062,6 +1220,8 @@ function fitToViewport() {
   const root = document.documentElement.style;
   root.setProperty('--vv-height', `${vv.height}px`);
   root.setProperty('--vv-top', `${vv.offsetTop}px`);
+  // 키보드가 올라와 있는 동안은 화면 아래 '홈 막대' 여백이 필요 없음 → 빈 공간 없애기
+  document.documentElement.classList.toggle('kb-open', vv.height < window.innerHeight - 120);
   // 키보드가 닫힌 뒤 iPhone이 화면을 밀어 올린 채로 두는 문제 되돌리기
   if (flow && vv.height >= window.innerHeight - 1 && window.scrollY !== 0) window.scrollTo(0, 0);
 }
