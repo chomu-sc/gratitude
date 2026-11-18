@@ -281,6 +281,7 @@ const ui = {
   homeMode: localStorage.getItem('gj:homeMode') === 'collection' ? 'collection' : 'calendar',   // 달력 | 감사 모음
   query: '',
   pick: null,                 // 감사 모음 맨 위에 꺼내 보여줄 감사 하나
+  showPick: localStorage.getItem('gj:showPick') !== '0',   // '꺼내 본 감사' 보이기 (메뉴에서 끄고 켬)
   distOpen: localStorage.getItem('gj:distOpen') === '1',
   installHintClosed: localStorage.getItem('gj:installHintClosed') === '1',
 };
@@ -446,25 +447,40 @@ function collectionListHTML() {
   if (!all.length) return '<p class="empty-note center">아직 모인 감사가 없어요.<br>아래 <b>＋</b>로 첫 감사를 적어 보세요.</p>';
   if (!list.length) return `<p class="empty-note center">‘${esc(q)}’가 들어간 감사가 없어요.</p>`;
 
-  const days = new Set(list.map((g) => g.day)).size;
-  let html = `<p class="g-count">${q ? '찾은' : '모두'} <b>${list.length}개</b>의 감사 · ${days}일</p>`;
-  let month = '';
+  // 월 → 날짜 → 감사한 일
+  const byMonth = new Map();
   for (const g of list) {
     const m = monthOf(g.day);
-    if (m !== month) {
-      if (month) html += '</ul></section>';
-      month = m;
-      const [y, mm] = m.split('-').map(Number);
-      const n = list.filter((x) => monthOf(x.day) === m).length;
-      html += `<section class="card g-month"><h3>${y}년 ${mm}월 <span>${n}개</span></h3><ul class="g-list">`;
-    }
-    html += `
-      <li><button class="g-item" data-action="goto" data-day="${g.day}">
-        <span class="g-text">${highlight(g.text, q)}</span>
-        <span class="g-meta">${faceSVG(g.level, 16)}${fmtDay(g.day)}</span>
-      </button></li>`;
+    if (!byMonth.has(m)) byMonth.set(m, new Map());
+    const days = byMonth.get(m);
+    if (!days.has(g.day)) days.set(g.day, []);
+    days.get(g.day).push(g);
   }
-  return `${html}</ul></section>`;
+
+  const dayCount = new Set(list.map((g) => g.day)).size;
+  let html = `<p class="g-count">${q ? '찾은' : '모두'} <b>${list.length}개</b>의 감사 · ${dayCount}일</p>`;
+  for (const [m, days] of byMonth) {
+    const [y, mm] = m.split('-').map(Number);
+    const n = [...days.values()].reduce((sum, items) => sum + items.length, 0);
+    html += `<h3 class="g-month-title">${y}년 ${mm}월 <span>${days.size}일 · ${n}개</span></h3>`;
+    for (const [day, items] of days) {
+      const entry = store.get(day);
+      html += `
+        <section class="card g-day">
+          <button class="g-day-head" data-action="goto" data-day="${day}" aria-label="${fmtDay(day)} 달력에서 보기">
+            ${faceSVG(items[0].level, 26)}
+            <span class="g-day-title">${fmtDay(day)}</span>
+            <span class="g-day-n">${items.length}개</span>
+            <span class="chev" aria-hidden="true">›</span>
+          </button>
+          ${entry?.summary && !q ? `<p class="g-summary">${esc(entry.summary)}</p>` : ''}
+          <ul class="g-list">
+            ${items.map((g) => `<li><span class="g-dot" aria-hidden="true"></span><span class="g-text">${highlight(g.text, q)}</span></li>`).join('')}
+          </ul>
+        </section>`;
+    }
+  }
+  return html;
 }
 
 function collectionHTML() {
@@ -475,9 +491,12 @@ function collectionHTML() {
   const pick = all.find((g) => g.key === ui.pick);
   return `
     <div class="collection">
-      ${pick ? `
+      ${pick && ui.showPick ? `
         <section class="card g-pick">
-          <p class="g-pick-label">꺼내 본 감사</p>
+          <div class="g-pick-top">
+            <p class="g-pick-label">꺼내 본 감사</p>
+            <button class="g-pick-hide" data-action="hide-pick" aria-label="꺼내 본 감사 숨기기">숨기기 ✕</button>
+          </div>
           <p class="g-pick-text">“${esc(pick.text)}”</p>
           <div class="g-pick-foot">
             <span class="g-meta">${faceSVG(pick.level, 18)}${fmtDayLong(pick.day)}</span>
@@ -693,6 +712,14 @@ function menuHTML() {
       ${reminderHTML()}
 
       <section class="card list">
+        <h3 class="menu-title">보기 설정</h3>
+        <label class="row">
+          <span>감사 모음에 ‘꺼내 본 감사’ 보이기</span>
+          <span class="switch"><input type="checkbox" id="show-pick" ${ui.showPick ? 'checked' : ''}><i></i></span>
+        </label>
+      </section>
+
+      <section class="card list">
         <h3 class="menu-title">계정 · 동기화</h3>
         ${LOCAL_ONLY ? `
           <div class="row"><span>모드</span><span>로컬 모드 (이 기기에만 저장)</span></div>
@@ -734,7 +761,7 @@ function menuHTML() {
       <section class="card list">
         <h3 class="menu-title">데이터</h3>
         <button class="row link" data-action="export"><span>기록 내보내기 (JSON 파일)</span><span>↓</span></button>
-        <div class="row"><span>버전</span><span>1.5</span></div>
+        <div class="row"><span>버전</span><span>1.6</span></div>
       </section>
 
       ${LOCAL_ONLY ? '' : '<button class="btn danger block logout" data-action="logout">로그아웃</button>'}
@@ -922,6 +949,12 @@ app.addEventListener('click', (e) => {
       localStorage.setItem('gj:homeMode', ui.homeMode);
       renderHome();
       break;
+    case 'hide-pick':
+      ui.showPick = false;
+      localStorage.setItem('gj:showPick', '0');
+      renderHome();
+      toast('메뉴 ▸ 보기 설정에서 다시 켤 수 있어요');
+      break;
     case 'shuffle': {
       const all = allGratitude().filter((g) => g.key !== ui.pick);
       if (all.length) ui.pick = all[Math.floor(Math.random() * all.length)].key;
@@ -966,6 +999,11 @@ app.addEventListener('input', (e) => {
 });
 
 app.addEventListener('change', (e) => {
+  if (e.target.id === 'show-pick') {
+    ui.showPick = e.target.checked;
+    localStorage.setItem('gj:showPick', ui.showPick ? '1' : '0');
+    return;
+  }
   if (e.target.id === 'remind-on') {
     const turnOn = e.target.checked;
     onReminderChange(async () => {

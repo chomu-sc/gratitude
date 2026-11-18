@@ -457,17 +457,23 @@ label.row { cursor: pointer; }
 }
 .g-count { margin: 2px 4px 0; font-size: 13px; color: var(--text-2); }
 .g-count b { color: var(--text); }
-.g-month { padding: 14px 6px 6px; }
-.g-month h3 { margin: 0 12px 6px; font-size: 15px; display: flex; justify-content: space-between; }
-.g-month h3 span { font-size: 12px; color: var(--text-2); font-weight: 600; }
-.g-list { list-style: none; margin: 0; padding: 0; }
-.g-list li + li { border-top: 1px solid var(--line); }
-.g-item {
-  width: 100%; border: 0; background: transparent; text-align: left; padding: 11px 12px;
-  display: grid; gap: 4px; border-radius: 12px;
+.g-month-title { margin: 6px 4px -4px; font-size: 15px; display: flex; justify-content: space-between; align-items: baseline; }
+.g-month-title span { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.g-day { padding: 6px 8px 12px; }
+.g-day-head {
+  width: 100%; border: 0; background: transparent; border-radius: 12px; padding: 8px 8px;
+  display: flex; align-items: center; gap: 10px; text-align: left;
 }
-.g-item:active { background: var(--fill); }
+.g-day-head:active { background: var(--fill); }
+.g-day-title { font-weight: 700; font-size: 16px; flex: 1; }
+.g-day-n { font-size: 12px; color: var(--text-2); }
+.g-summary { margin: 0 10px 6px 46px; font-size: 13px; color: var(--text-2); }
+.g-list { list-style: none; margin: 2px 0 0; padding: 0 10px 0 46px; display: grid; gap: 7px; }
+.g-list li { display: flex; gap: 9px; align-items: baseline; }
+.g-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--yellow); transform: translateY(-2px); }
 .g-text { font-size: 15px; word-break: break-word; }
 .g-text mark { background: #FFE08A; color: inherit; border-radius: 3px; padding: 0 1px; }
+.g-pick-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.g-pick-hide { border: 0; background: rgba(59,44,8,.08); color: rgba(59,44,8,.7); font-size: 12px; font-weight: 600; border-radius: 99px; padding: 4px 10px; }
 .g-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .empty-note.center { text-align: center; padding: 28px 0; line-height: 1.7; }
