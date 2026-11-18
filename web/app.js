@@ -278,6 +278,9 @@ const ui = {
   selected: todayKey(),
   loginMode: 'signin',        // signin | signup
   tab: 'calendar',            // calendar | menu   (＋는 바로 작성 화면을 엶)
+  homeMode: localStorage.getItem('gj:homeMode') === 'collection' ? 'collection' : 'calendar',   // 달력 | 감사 모음
+  query: '',
+  pick: null,                 // 감사 모음 맨 위에 꺼내 보여줄 감사 하나
   distOpen: localStorage.getItem('gj:distOpen') === '1',
   installHintClosed: localStorage.getItem('gj:installHintClosed') === '1',
 };
@@ -396,10 +399,17 @@ function renderHome() {
             <span>앱처럼 쓰려면 아래 <b>공유</b> 버튼 → <b>홈 화면에 추가</b>를 눌러 주세요.</span>
             <button class="icon-btn" data-action="close-install" aria-label="닫기">×</button>
           </div>` : ''}
+        <div class="seg" role="tablist" aria-label="보기 방식">
+          <button role="tab" data-action="mode" data-mode="calendar" aria-selected="${ui.homeMode === 'calendar'}"
+                  class="${ui.homeMode === 'calendar' ? 'on' : ''}">📅 달력</button>
+          <button role="tab" data-action="mode" data-mode="collection" aria-selected="${ui.homeMode === 'collection'}"
+                  class="${ui.homeMode === 'collection' ? 'on' : ''}">✨ 감사 모음</button>
+        </div>
+        ${ui.homeMode === 'collection' ? collectionHTML() : `
         <div class="columns">
           <section class="card" aria-label="달력">${calendarHTML()}</section>
           <section class="card detail" aria-label="선택한 날의 기록">${detailHTML()}</section>
-        </div>`}
+        </div>`}`}
     </div>
     ${tabbarHTML()}`;
   renderStatus();
@@ -410,6 +420,76 @@ function renderHome() {
       localStorage.setItem('gj:distOpen', ui.distOpen ? '1' : '0');
     });
   }
+}
+
+/* ---------- 감사 모음: 지금까지 적은 감사한 일을 한곳에 ---------- */
+function allGratitude() {
+  const list = [];
+  for (const e of Object.values(store.entries)) {
+    if (e.deleted) continue;
+    e.items.forEach((text, i) => list.push({ day: e.day, text, level: e.emotion_level || 0, key: `${e.day}#${i}` }));
+  }
+  return list.sort((a, b) => b.day.localeCompare(a.day) || a.key.localeCompare(b.key));
+}
+
+function highlight(text, q) {
+  if (!q) return esc(text);
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return esc(text);
+  return `${esc(text.slice(0, i))}<mark>${esc(text.slice(i, i + q.length))}</mark>${esc(text.slice(i + q.length))}`;
+}
+
+function collectionListHTML() {
+  const q = ui.query.trim();
+  const all = allGratitude();
+  const list = q ? all.filter((g) => g.text.toLowerCase().includes(q.toLowerCase())) : all;
+  if (!all.length) return '<p class="empty-note center">아직 모인 감사가 없어요.<br>아래 <b>＋</b>로 첫 감사를 적어 보세요.</p>';
+  if (!list.length) return `<p class="empty-note center">‘${esc(q)}’가 들어간 감사가 없어요.</p>`;
+
+  const days = new Set(list.map((g) => g.day)).size;
+  let html = `<p class="g-count">${q ? '찾은' : '모두'} <b>${list.length}개</b>의 감사 · ${days}일</p>`;
+  let month = '';
+  for (const g of list) {
+    const m = monthOf(g.day);
+    if (m !== month) {
+      if (month) html += '</ul></section>';
+      month = m;
+      const [y, mm] = m.split('-').map(Number);
+      const n = list.filter((x) => monthOf(x.day) === m).length;
+      html += `<section class="card g-month"><h3>${y}년 ${mm}월 <span>${n}개</span></h3><ul class="g-list">`;
+    }
+    html += `
+      <li><button class="g-item" data-action="goto" data-day="${g.day}">
+        <span class="g-text">${highlight(g.text, q)}</span>
+        <span class="g-meta">${faceSVG(g.level, 16)}${fmtDay(g.day)}</span>
+      </button></li>`;
+  }
+  return `${html}</ul></section>`;
+}
+
+function collectionHTML() {
+  const all = allGratitude();
+  if (all.length && (!ui.pick || !all.some((g) => g.key === ui.pick))) {
+    ui.pick = all[Math.floor(Math.random() * all.length)].key;
+  }
+  const pick = all.find((g) => g.key === ui.pick);
+  return `
+    <div class="collection">
+      ${pick ? `
+        <section class="card g-pick">
+          <p class="g-pick-label">꺼내 본 감사</p>
+          <p class="g-pick-text">“${esc(pick.text)}”</p>
+          <div class="g-pick-foot">
+            <span class="g-meta">${faceSVG(pick.level, 18)}${fmtDayLong(pick.day)}</span>
+            ${all.length > 1 ? '<button class="btn ghost" data-action="shuffle">↻ 다른 감사</button>' : ''}
+          </div>
+        </section>` : ''}
+      <label class="g-search">
+        <span aria-hidden="true">🔍</span>
+        <input type="search" id="g-query" placeholder="감사한 일 검색" value="${esc(ui.query)}" enterkeyhint="search" autocomplete="off">
+      </label>
+      <div id="g-results">${collectionListHTML()}</div>
+    </div>`;
 }
 
 const ICONS = {
@@ -654,7 +734,7 @@ function menuHTML() {
       <section class="card list">
         <h3 class="menu-title">데이터</h3>
         <button class="row link" data-action="export"><span>기록 내보내기 (JSON 파일)</span><span>↓</span></button>
-        <div class="row"><span>버전</span><span>1.4</span></div>
+        <div class="row"><span>버전</span><span>1.5</span></div>
       </section>
 
       ${LOCAL_ONLY ? '' : '<button class="btn danger block logout" data-action="logout">로그아웃</button>'}
@@ -837,6 +917,23 @@ app.addEventListener('click', (e) => {
         toast('삭제했어요');
       }
       break;
+    case 'mode':
+      ui.homeMode = target.dataset.mode;
+      localStorage.setItem('gj:homeMode', ui.homeMode);
+      renderHome();
+      break;
+    case 'shuffle': {
+      const all = allGratitude().filter((g) => g.key !== ui.pick);
+      if (all.length) ui.pick = all[Math.floor(Math.random() * all.length)].key;
+      renderHome();
+      break;
+    }
+    case 'goto':
+      ui.homeMode = 'calendar';
+      localStorage.setItem('gj:homeMode', 'calendar');
+      selectDay(day);
+      setTimeout(() => $('.detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      break;
     case 'tab':
       if (ui.tab !== target.dataset.tab) {
         ui.tab = target.dataset.tab;
@@ -860,6 +957,12 @@ app.addEventListener('click', (e) => {
       renderHome();
       break;
   }
+});
+
+app.addEventListener('input', (e) => {
+  if (e.target.id !== 'g-query') return;
+  ui.query = e.target.value;
+  $('#g-results').innerHTML = collectionListHTML();
 });
 
 app.addEventListener('change', (e) => {
@@ -920,24 +1023,25 @@ function openFlow(day) {
   focusCurrent();
 }
 
-/** 날짜를 바꾸면 그 날의 기존 기록을 불러오고, 아직 저장 안 한 새 항목은 따라감 */
+/** 날짜를 바꾸면 그 날의 기존 기록을 불러오고, 이번 작성에서 새로 적은 항목(fresh)은 따라감 */
 function loadFlowDay(day) {
-  const carried = flow.items.filter((i) => i.isNew);
+  const carried = flow.items.filter((i) => i.fresh);
   const entry = store.get(day);
   flow.day = day;
-  flow.items = (entry?.items || []).map((text) => ({ id: uid(), text, isNew: false }));
+  flow.items = (entry?.items || []).map((text) => ({ id: uid(), text, fresh: false }));
   flow.emotion = entry?.emotion_level || 4;
   flow.emotionChosen = !!entry?.emotion_level;
   flow.summary = entry?.summary || '';
   flow.saved = entry ? snapshot() : EMPTY_SNAPSHOT;
   flow.items.push(...carried);
   flow.existing = !!entry;
+  flow.loadedExisting = !!entry;   // 이번 작성을 시작하기 전부터 기록이 있던 날인지
 }
 
 function commitCurrent() {
   const text = flow.current.trim();
   if (!text) return false;
-  flow.items.push({ id: uid(), text, isNew: true });
+  flow.items.push({ id: uid(), text, fresh: true });
   flow.current = '';
   return true;
 }
@@ -951,7 +1055,6 @@ function saveFlow() {
     summary: flow.summary.trim().slice(0, SUMMARY_LIMIT),
   });
   flow.saved = snapshot();
-  flow.items.forEach((i) => { i.isNew = false; });
   flow.existing = true;
   saved();
   return true;
@@ -1022,6 +1125,10 @@ function renderFlow() {
       <div class="step" id="step-scroll">
         <h2>${isToday ? '오늘' : '이 날'} 어떤 일이 감사했나요?</h2>
         <p class="hint">${hint}</p>
+        ${isToday && new Date().getHours() < 4 ? `
+          <button class="midnight" data-flow="to-yesterday">
+            🌙 자정이 지났어요 · <b>어제(${Number(addDays(flow.day, -1).slice(8))}일) 일기로 쓰기</b>
+          </button>` : ''}
         <ol class="write-list">
           ${flow.items.map((item, i) => `
             <li class="write-row" data-id="${item.id}">
@@ -1065,7 +1172,7 @@ function renderFlow() {
       </div>
 
       <div class="section-label">한 줄 총평 <span class="chip">선택</span></div>
-      <textarea class="summary-box" id="summary" rows="2" maxlength="${SUMMARY_LIMIT}"
+      <textarea class="summary-box" id="summary" rows="1" maxlength="${SUMMARY_LIMIT}" enterkeyhint="done"
         placeholder="예) 동료의 응원 덕분에 버틸 수 있었던 하루">${esc(flow.summary)}</textarea>
       <div class="counter" id="counter">${flow.summary.length}/${SUMMARY_LIMIT}</div>
 
@@ -1116,8 +1223,33 @@ function stopWriting() {
 }
 
 function changeFlowDay(day) {
-  if (!day || day > todayKey()) return;
+  if (!day || day > todayKey() || day === flow.day) return;
+  commitCurrent();
+  const fresh = flow.items.filter((i) => i.fresh);
+  const mood = { emotion: flow.emotion, emotionChosen: flow.emotionChosen, summary: flow.summary };
+  const oldWasNew = !flow.loadedExisting;
+
+  // 이번에 적은 항목이 이미 (자동) 저장됐다면 원래 날짜에서 빼기 → 새 날짜로 옮겨감
+  if (fresh.length) {
+    const old = store.get(flow.day);
+    if (old) {
+      const remaining = [...old.items];
+      for (const item of fresh) {
+        const idx = remaining.indexOf(item.text.replace(/\s*\n\s*/g, ' ').trim());
+        if (idx >= 0) remaining.splice(idx, 1);
+      }
+      if (remaining.length !== old.items.length) {
+        if (remaining.length) store.put(flow.day, { items: remaining, emotion_level: old.emotion_level, summary: old.summary });
+        else store.remove(flow.day);
+        saved();
+      }
+    }
+  }
+
   loadFlowDay(day);
+  // 이번 작성에서 고른 기분·총평도, 옮겨 간 날에 기록이 없었다면 함께 가져감
+  if (oldWasNew && !flow.loadedExisting && fresh.length) Object.assign(flow, mood);
+  if (fresh.length) flow.saved = EMPTY_SNAPSHOT;   // 새 날짜에는 아직 저장 전
   renderFlow();
 }
 
@@ -1133,6 +1265,7 @@ function bindFlowEvents(sheet) {
     switch (target.dataset.flow) {
       case 'close': closeFlow(); break;
       case 'prev-day': changeFlowDay(addDays(flow.day, -1)); break;
+      case 'to-yesterday': changeFlowDay(addDays(todayKey(), -1)); focusCurrent(); break;
       case 'next-day': changeFlowDay(addDays(flow.day, 1)); break;
       case 'more': addMore(); break;
       case 'stop': stopWriting(); break;
@@ -1178,6 +1311,12 @@ function bindFlowEvents(sheet) {
     }
   });
 
+  // 총평 칸을 누르면 키보드가 다 올라온 뒤 칸을 화면 가운데로 (한 번만, 부드럽게)
+  sheet.addEventListener('focusin', (e) => {
+    if (e.target.id !== 'summary') return;
+    setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 320);
+  });
+
   sheet.addEventListener('change', (e) => {
     if (e.target.id === 'day-input') changeFlowDay(e.target.value);
   });
@@ -1193,6 +1332,9 @@ function bindFlowEvents(sheet) {
     } else if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'current') {
       e.preventDefault();
       addMore();
+    } else if (e.key === 'Enter' && !e.shiftKey && e.target.id === 'summary') {
+      e.preventDefault();
+      e.target.blur();            // 완료 → 키보드 내리기
     } else if (e.key === 'Escape') {
       closeFlow();
     }

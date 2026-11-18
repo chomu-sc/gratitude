@@ -302,9 +302,13 @@ details[open] > summary .chev { transform: rotate(90deg); }
 
 .section-label { display: flex; align-items: center; gap: 6px; font-weight: 700; margin: 26px 0 8px; }
 .summary-box {
-  width: 100%; border: 0; background: var(--card); border-radius: 14px; padding: 13px 14px;
-  resize: none; outline: none; font-size: 16px; box-shadow: var(--shadow); min-height: 52px;
+  display: block; width: 100%; border: 1.5px solid var(--line); background: var(--card);
+  border-radius: 14px; padding: 13px 14px; line-height: 1.45;
+  resize: none; outline: none; font-size: 16px; min-height: 50px; overflow: hidden;
+  transition: border-color 0.15s ease;
 }
+.summary-box:focus { border-color: var(--yellow); }
+.summary-box::placeholder { color: var(--text-3); }
 .counter { text-align: right; font-size: 11px; color: var(--text-3); margin-top: 4px; font-variant-numeric: tabular-nums; }
 .recap { margin-top: 18px; }
 .recap li { font-size: 14px; color: var(--text-2); }
@@ -402,3 +406,68 @@ label.row { cursor: pointer; }
   border-radius: 10px; padding: 6px 10px; min-width: 110px; text-align: center;
   -webkit-appearance: none; appearance: none;
 }
+
+/* 작성 창이 열려 있으면 뒤쪽 화면을 배경색으로 가림 (키보드가 오르내릴 때 뒤 화면이 비쳐 어색하던 문제) */
+@media (max-width: 699px) {
+  body.noscroll::before { content: ""; position: fixed; inset: -50vh 0; background: var(--bg); z-index: 15; }
+}
+/* 키보드가 올라와 있을 때는 얼굴·설명을 줄여서 입력칸과 버튼이 한 화면에 들어오게 */
+.kb-open .step { padding-top: 12px; }
+.kb-open .step h2 { font-size: 19px; }
+.kb-open .step .hint, .kb-open .recap, .kb-open .range-ends, .kb-open .ticks { display: none; }
+.kb-open .mood-pick { flex-direction: row; justify-content: center; margin: 8px 0 0; gap: 12px; }
+.kb-open .mood-pick .face { width: 52px; height: 52px; filter: none; }
+.kb-open .mood-pick .mood-label { font-size: 17px; }
+.kb-open .section-label { margin-top: 14px; }
+
+/* 자정 직후 '어제 일기로 쓰기' */
+.midnight {
+  width: 100%; margin: -6px 0 16px; padding: 11px 14px; border: 0; border-radius: 12px;
+  background: var(--fill); color: var(--text-2); font-size: 14px; text-align: left;
+}
+.midnight b { color: var(--text); }
+
+/* ---------- 달력 / 감사 모음 전환 ---------- */
+.seg {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0 0 14px;
+  background: var(--fill-strong); border-radius: 12px; max-width: 420px;
+}
+.seg button {
+  border: 0; background: transparent; border-radius: 9px; padding: 8px 0;
+  font-size: 14px; font-weight: 600; color: var(--text-2);
+}
+.seg button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+/* ---------- 감사 모음 ---------- */
+.collection { max-width: 640px; display: grid; gap: 14px; }
+.g-pick { background: linear-gradient(135deg, #FFF3C4, #FFE08A); color: #3B2C08; }
+.g-pick-label { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .04em; opacity: .7; }
+.g-pick-text { margin: 0 0 14px; font-size: 20px; font-weight: 700; line-height: 1.4; word-break: break-word; }
+.g-pick-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.g-pick .g-meta { color: rgba(59, 44, 8, .7); }
+.g-pick .btn.ghost { color: #3B2C08; padding: 6px 4px; }
+.g-search {
+  display: flex; align-items: center; gap: 8px; background: var(--card); border: 1.5px solid var(--line);
+  border-radius: 14px; padding: 0 14px;
+}
+.g-search:focus-within { border-color: var(--yellow); }
+.g-search input {
+  flex: 1; border: 0; background: transparent; outline: none; font-size: 16px; padding: 12px 0;
+  -webkit-appearance: none; appearance: none;
+}
+.g-count { margin: 2px 4px 0; font-size: 13px; color: var(--text-2); }
+.g-count b { color: var(--text); }
+.g-month { padding: 14px 6px 6px; }
+.g-month h3 { margin: 0 12px 6px; font-size: 15px; display: flex; justify-content: space-between; }
+.g-month h3 span { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.g-list { list-style: none; margin: 0; padding: 0; }
+.g-list li + li { border-top: 1px solid var(--line); }
+.g-item {
+  width: 100%; border: 0; background: transparent; text-align: left; padding: 11px 12px;
+  display: grid; gap: 4px; border-radius: 12px;
+}
+.g-item:active { background: var(--fill); }
+.g-text { font-size: 15px; word-break: break-word; }
+.g-text mark { background: #FFE08A; color: inherit; border-radius: 3px; padding: 0 1px; }
+.g-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.empty-note.center { text-align: center; padding: 28px 0; line-height: 1.7; }
