@@ -276,6 +276,7 @@ const ui = {
   view: 'loading',            // login | home
   month: monthOf(todayKey()), // '2026-10'
   selected: todayKey(),
+  selectedAuto: true,          // 직접 고른 게 아니라 '오늘'이라 자동으로 선택된 상태
   loginMode: 'signin',        // signin | signup
   tab: 'calendar',            // calendar | menu   (＋는 바로 작성 화면을 엶)
   homeMode: localStorage.getItem('gj:homeMode') === 'collection' ? 'collection' : 'calendar',   // 달력 | 감사 모음
@@ -529,7 +530,8 @@ function tabbarHTML() {
   return `
     <nav class="tabbar" aria-label="화면 전환">
       ${tab('calendar', '캘린더')}
-      <button class="tab-plus" data-action="write" data-day="${todayKey()}" aria-label="오늘의 감사일기 쓰기">${ICONS.plus}</button>
+      <button class="tab-plus" data-action="write" data-day="${plusDay()}"
+              aria-label="${plusDay() === todayKey() ? '오늘의' : fmtDay(plusDay())} 감사일기 쓰기">${ICONS.plus}</button>
       ${tab('menu', '메뉴')}
     </nav>`;
 }
@@ -761,7 +763,7 @@ function menuHTML() {
       <section class="card list">
         <h3 class="menu-title">데이터</h3>
         <button class="row link" data-action="export"><span>기록 내보내기 (JSON 파일)</span><span>↓</span></button>
-        <div class="row"><span>버전</span><span>1.6</span></div>
+        <div class="row"><span>버전</span><span>1.7</span></div>
       </section>
 
       ${LOCAL_ONLY ? '' : '<button class="btn danger block logout" data-action="logout">로그아웃</button>'}
@@ -908,8 +910,15 @@ function moveMonth(delta) {
   renderHome();
 }
 
+/** ＋를 누르면 열 날짜: 달력 화면이면 달력에서 고른 날, 그 밖에는 오늘 */
+function plusDay() {
+  const onCalendar = ui.tab === 'calendar' && ui.homeMode === 'calendar';
+  return onCalendar && ui.selected <= todayKey() ? ui.selected : todayKey();
+}
+
 function selectDay(day) {
   ui.selected = day;
+  ui.selectedAuto = false;
   ui.month = monthOf(day);
   renderHome();
 }
@@ -1071,7 +1080,8 @@ function loadFlowDay(day) {
   flow.emotionChosen = !!entry?.emotion_level;
   flow.summary = entry?.summary || '';
   flow.saved = entry ? snapshot() : EMPTY_SNAPSHOT;
-  flow.items.push(...carried);
+  const have = new Set(flow.items.map((i) => i.text.trim()));
+  flow.items.push(...carried.filter((i) => !have.has(i.text.replace(/\s*\n\s*/g, ' ').trim())));
   flow.existing = !!entry;
   flow.loadedExisting = !!entry;   // 이번 작성을 시작하기 전부터 기록이 있던 날인지
 }
@@ -1121,7 +1131,7 @@ function closeFlow({ autosave = true } = {}) {
   flow = null;
   $('#flow')?.remove();
   document.body.classList.remove('noscroll');
-  if (store.get(day)) { ui.selected = day; ui.month = monthOf(day); }
+  if (store.get(day)) { ui.selected = day; ui.month = monthOf(day); ui.selectedAuto = day === todayKey() && ui.selectedAuto; }
   render();
 }
 
@@ -1246,13 +1256,26 @@ function focusCurrent() {
   if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
 }
 
+/* 한글은 글자를 '조합'하는 중에 칸을 바꾸면 iPhone이 마지막 글자를 다음 칸에 한 번 더 넣음.
+   → 칸을 바꾸기 전에 조합을 먼저 끝내고(blur) 최종 글자를 읽음 */
+let composing = false;
+let enterPending = false;
+function finishComposition() {
+  const el = $('#current');
+  if (composing && el && document.activeElement === el) el.blur();   // 조합 확정
+  composing = false;
+  if (el && flow) flow.current = el.value.replace(/\n/g, ' ');
+}
+
 function addMore() {
+  finishComposition();
   if (!commitCurrent()) { focusCurrent(); return; }
   renderFlow();
   focusCurrent();
 }
 
 function stopWriting() {
+  finishComposition();
   commitCurrent();
   if (!cleanItems().length) return;
   flow.emotionChosen = true;     // 기분 화면을 봤으면 슬라이더 값(기본 '보통')도 선택으로 간주
@@ -1326,6 +1349,13 @@ function bindFlowEvents(sheet) {
     if (!flow) return;
     const el = e.target;
     if (el.id === 'current') {
+      if (el.value.includes('\n')) {
+        // 키보드의 '다음/Return'이 줄바꿈으로 들어온 경우 → 더 적기
+        el.value = el.value.replace(/\n/g, '');
+        flow.current = el.value;
+        if (flow.step === 'items') setTimeout(addMore, 0);
+        return;
+      }
       flow.current = el.value;
       autoGrow(el);
       updateFlowButtons();
@@ -1359,10 +1389,22 @@ function bindFlowEvents(sheet) {
     if (e.target.id === 'day-input') changeFlowDay(e.target.value);
   });
 
+  sheet.addEventListener('compositionstart', () => { composing = true; });
+  sheet.addEventListener('compositionend', (e) => {
+    composing = false;
+    if (enterPending && e.target.id === 'current') {
+      enterPending = false;
+      setTimeout(addMore, 0);      // 조합이 끝난 다음에 더 적기
+    }
+  });
+
   sheet.addEventListener('keydown', (e) => {
     if (!flow) return;
-    // 한글 조합 중 Enter는 무시 (마지막 글자 확정용)
-    if (e.isComposing || e.keyCode === 229) return;
+    // 한글 조합 중 Enter: 조합이 끝나면 '더 적기' (마지막 글자가 다음 칸으로 넘어가지 않게)
+    if (e.isComposing || e.keyCode === 229) {
+      if (e.key === 'Enter' && e.target.id === 'current') enterPending = true;
+      return;
+    }
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (flow.step === 'items') stopWriting();
@@ -1422,6 +1464,10 @@ document.addEventListener('visibilitychange', () => {
     }
   } else {
     runSync(pull);
+    if (ui.selectedAuto && ui.selected !== todayKey() && new Date().getHours() >= 4) {
+      ui.selected = todayKey();
+      ui.month = monthOf(ui.selected);
+    }
     if (ui.view === 'home' && !flow) renderHome();   // 날짜가 바뀌었을 수 있음
   }
 });
